@@ -1,0 +1,895 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>MIRAMAS - Sistema de Gestión</title>
+    <!--
+    ================================================================================
+    SISTEMA DE GESTIÓN PARA ÓPTICA - MIRAMAS
+    ================================================================================
+    Versión de producción de la aplicación web interna para la óptica MIRAMAS.
+    Mejorada con funciones de IA a través de la API de Gemini y optimizada para
+    un alto volumen de clientes.
+
+    USUARIOS DE PRUEBA:
+    - admin / admin123 (Rol: Administrador - Acceso completo)
+    - recepcion / recep123 (Rol: Recepción - Gestión de clientes, citas)
+    - optometrista / opto123 (Rol: Optometrista - Gestión de clientes e historial)
+
+    NOTA IMPORTANTE SOBRE EL ALOJAMIENTO:
+    Para que las funciones de IA (API de Gemini) funcionen correctamente, este archivo
+    debe ser servido a través de un servidor web (ej. GitHub Pages, Netlify, o un
+    servidor local como 'Live Server' en VSCode). No funcionarán si se abre el
+    archivo HTML directamente desde el sistema de archivos (protocolo file://).
+    ================================================================================
+    -->
+    <!-- Bootstrap CDN -->
+    <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/css/bootstrap.min.css" rel="stylesheet">
+    <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/bootstrap-icons@1.11.3/font/bootstrap-icons.min.css">
+    <!-- Chart.js CDN -->
+    <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+    <!-- Custom CSS -->
+    <style>
+        :root {
+            --primary-color: #0d6efd;
+            --light-primary: #e7f0ff;
+            --success-light: #d1e7dd;
+            --warning-light: #fff3cd;
+            --danger-light: #f8d7da;
+            --secondary-light: #e2e3e5;
+            --border-color: #dee2e6;
+            --border-color-dark: #495057;
+        }
+
+        /* --- Theme Universal Styles --- */
+        body { 
+            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif; 
+            transition: background-color 0.3s, color 0.3s;
+        }
+        .hidden { display: none !important; }
+        .toast-container { position: fixed; top: 20px; right: 20px; z-index: 1090; }
+        .debug-panel { 
+            position: fixed; bottom: 0; left: 0; width: 100%; 
+            background: #212529; color: #ced4da;
+            border-top: 2px solid var(--primary-color); 
+            padding: 15px; max-height: 200px; overflow-y: auto; 
+            display: none; font-family: 'Courier New', Courier, monospace; font-size: 0.9em;
+        }
+        .debug-panel.show { display: block; }
+        .agenda-table th, .agenda-table td { text-align: center; vertical-align: middle; }
+        .nav-link.active { font-weight: bold; color: var(--primary-color) !important; }
+        .btn-primary:hover { transform: translateY(-2px); box-shadow: 0 4px 8px rgba(0,0,0,.15); }
+        .container.mt-4 { animation: fadeIn 0.5s ease-in-out; }
+        .loading-spinner {
+            position: fixed; top: 50%; left: 50%;
+            transform: translate(-50%, -50%); z-index: 1100;
+        }
+        #client-search-results {
+            position: absolute;
+            max-height: 200px;
+            overflow-y: auto;
+            width: 100%;
+            z-index: 1055;
+        }
+        @keyframes fadeIn {
+            from { opacity: 0; transform: translateY(10px); }
+            to { opacity: 1; transform: translateY(0); }
+        }
+        @media print { 
+            .no-print { display: none; } 
+            body { font-size: 12pt; } 
+            [data-bs-theme="dark"] body { background-color: #fff !important; color: #000 !important; }
+        }
+        :focus-visible { outline: 2px solid var(--primary-color); outline-offset: 2px; border-radius: 4px; }
+        
+        /* --- Light Mode Styles (High Contrast) --- */
+        body { background-color: #f8f9fa; }
+        .navbar, .card, .modal-content, .list-group-item { border-width: 1px; border-color: #cdd2d8 !important; }
+        .table { border-color: #b9bec4; }
+        .navbar { box-shadow: 0 2px 4px rgba(0,0,0,.1); }
+        .modal-header, .card-header { background-color: var(--light-primary); }
+        .confirmed { background-color: var(--success-light); }
+        .pending { background-color: var(--warning-light); }
+        .cancelled { background-color: var(--danger-light); }
+        .absent { background-color: var(--secondary-light); }
+        #client-search-results .list-group-item-action:hover { background-color: var(--light-primary); }
+        
+        /* --- Dark Mode Styles (High Contrast) --- */
+        [data-bs-theme="dark"] body { background-color: #121212; }
+        [data-bs-theme="dark"] .navbar, 
+        [data-bs-theme="dark"] .card, 
+        [data-bs-theme="dark"] .modal-content,
+        [data-bs-theme="dark"] .list-group-item {
+            background-color: #1e1e1e;
+            border-color: var(--border-color-dark) !important;
+        }
+        [data-bs-theme="dark"] .table { --bs-table-border-color: var(--border-color-dark); }
+        [data-bs-theme="dark"] .modal-header, 
+        [data-bs-theme="dark"] .card-header { background-color: #2a2a2a; border-bottom-color: var(--border-color-dark) !important; }
+        [data-bs-theme="dark"] .confirmed { background-color: #0b3d22; }
+        [data-bs-theme="dark"] .pending { background-color: #4d4013; }
+        [data-bs-theme="dark"] .cancelled { background-color: #58151c; }
+        [data-bs-theme="dark"] .absent { background-color: #343a40; }
+        [data-bs-theme="dark"] #client-search-results .list-group-item-action:hover { background-color: #2c2c2c; }
+    </style>
+</head>
+<body>
+
+    <div class="toast-container"></div>
+    <div id="loading-spinner" class="loading-spinner hidden">
+        <div class="spinner-border text-primary" role="status"><span class="visually-hidden">Cargando...</span></div>
+    </div>
+
+    <div id="login-screen" class="container">
+        <div class="row justify-content-center align-items-center vh-100">
+            <div class="col-md-6 col-lg-4">
+                <div class="card shadow-sm">
+                    <div class="card-body p-4">
+                        <h2 class="text-center mb-4"><i class="bi bi-eye-fill text-primary"></i> MIRAMAS</h2>
+                        <form id="login-form" class="needs-validation" novalidate>
+                            <div class="mb-3">
+                                <label for="username" class="form-label">Usuario</label>
+                                <input type="text" class="form-control" id="username" required>
+                                <div class="invalid-feedback">El nombre de usuario es requerido.</div>
+                            </div>
+                            <div class="mb-3">
+                                <label for="password" class="form-label">Contraseña</label>
+                                <input type="password" class="form-control" id="password" required>
+                                <div class="invalid-feedback">La contraseña es requerida.</div>
+                            </div>
+                            <button type="submit" class="btn btn-primary w-100 mt-3">Ingresar</button>
+                        </form>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <nav class="navbar navbar-expand-lg sticky-top no-print hidden">
+        <div class="container-fluid">
+            <a class="navbar-brand" href="#"><i class="bi bi-eye-fill"></i> MIRAMAS</a>
+            <button class="btn btn-outline-secondary ms-2" id="theme-toggler" title="Cambiar tema">
+                <i class="bi bi-moon-stars-fill"></i>
+            </button>
+            <button class="navbar-toggler ms-auto" type="button" data-bs-toggle="collapse" data-bs-target="#navbarNav"><span class="navbar-toggler-icon"></span></button>
+            <div class="collapse navbar-collapse" id="navbarNav">
+                <ul class="navbar-nav me-auto mb-2 mb-lg-0" id="main-nav-links">
+                    <li class="nav-item"><a class="nav-link" href="#" data-screen="dashboard">Dashboard</a></li>
+                    <li class="nav-item"><a class="nav-link" href="#" data-screen="clients">Clientes</a></li>
+                    <li class="nav-item hidden" data-role="recepcion,admin"><a class="nav-link" href="#" data-screen="citas">Citas</a></li>
+                    <li class="nav-item hidden" data-role="admin"><a class="nav-link" href="#" data-screen="reportes">Reportes</a></li>
+                </ul>
+                <ul class="navbar-nav">
+                    <li class="nav-item dropdown">
+                        <a class="nav-link dropdown-toggle" href="#" id="toolsDropdown" role="button" data-bs-toggle="dropdown" aria-expanded="false"><i class="bi bi-tools"></i> Herramientas</a>
+                        <ul class="dropdown-menu dropdown-menu-end" aria-labelledby="toolsDropdown">
+                            <li id="manage-users-nav-item" class="hidden" data-role="admin"><a class="dropdown-item" href="#" data-action="manage-users"><i class="bi bi-people-fill"></i> Gestionar Usuarios</a></li>
+                            <li><a class="dropdown-item" href="#" id="export-json-btn"><i class="bi bi-box-arrow-down"></i> Exportar Datos (JSON)</a></li>
+                            <li><a class="dropdown-item" href="#" id="import-json-btn"><i class="bi bi-box-arrow-in-up"></i> Importar Datos (JSON)</a></li>
+                            <input type="file" id="import-file" class="d-none" accept=".json">
+                            <li><hr class="dropdown-divider"></li>
+                            <li><a class="dropdown-item" href="#" id="toggle-debug-btn"><i class="bi bi-bug"></i> Mostrar/Ocultar Debug</a></li>
+                        </ul>
+                    </li>
+                    <li class="nav-item ms-2"><button class="btn btn-outline-danger" id="logout-btn"><i class="bi bi-box-arrow-right"></i> Salir</button></li>
+                </ul>
+            </div>
+        </div>
+    </nav>
+
+    <main id="app-container" class="container mt-4"></main>
+
+    <div class="debug-panel no-print" id="debug-panel">
+        <h6 class="text-white">Panel de Depuración</h6><div id="debug-log"></div>
+    </div>
+
+    <!-- Plantillas de las Pantallas -->
+    <template id="dashboard-template"><h2>Dashboard</h2><p id="welcome-msg" class="lead"></p><div class="row" id="dashboard-cards"></div></template>
+    <template id="clients-template"><h2>Gestión de Clientes</h2><div class="card"><div class="card-body"><div class="row g-3 mb-3"><div class="col-md-8"><label for="client-search" class="form-label">Buscar por nombre, ID, email o teléfono</label><div class="input-group"><span class="input-group-text"><i class="bi bi-search"></i></span><input type="text" class="form-control" id="client-search"></div></div><div class="col-md-4 d-flex align-items-end"><button class="btn btn-primary w-100" data-action="create-client"><i class="bi bi-plus-circle"></i> Nuevo Cliente</button></div></div><div class="table-responsive"><table class="table table-striped table-hover"><thead class="table-light"><tr><th>ID</th><th>Nombre</th><th>Email</th><th>Teléfono</th><th>Registro</th><th>Estado</th><th>Acciones</th></tr></thead><tbody id="clients-table"></tbody></table></div><div id="clients-empty" class="alert alert-secondary text-center hidden">No se encontraron clientes.</div></div></div></template>
+    <template id="citas-template"><h2>Gestión de Citas</h2><div class="card"><div class="card-body"><div class="row g-3 mb-3 align-items-end"><div class="col-md-4"><label for="agenda-date" class="form-label">Seleccionar Fecha</label><input type="date" id="agenda-date" class="form-control"></div><div class="col-md-8"><button class="btn btn-primary" data-action="create-appointment"><i class="bi bi-calendar-plus"></i> Nueva Cita</button></div></div><div class="table-responsive"><table class="table table-bordered agenda-table"><thead class="table-light"><tr><th>Hora</th><th>Cliente</th><th>Descripción</th><th>Estado</th><th>Acciones</th></tr></thead><tbody id="agenda-table"></tbody></table></div><div id="citas-empty" class="alert alert-secondary text-center hidden">No hay citas para esta fecha.</div></div></div></template>
+    <template id="reportes-template"><h2>Reportes</h2><div class="card"><div class="card-body"><form id="report-form" class="row g-3 align-items-end"><div class="col-md-3"><label for="report-type" class="form-label">Tipo de Reporte</label><select class="form-select" id="report-type"><option value="daily">Diario</option><option value="monthly">Mensual</option><option value="annual">Anual</option></select></div><div class="col-md-3" id="report-date-group"><label for="report-date" class="form-label">Fecha</label><input type="date" class="form-control" id="report-date"></div><div class="col-md-3 hidden" id="report-month-group"><label for="report-month" class="form-label">Mes</label><input type="month" class="form-control" id="report-month"></div><div class="col-md-3 hidden" id="report-year-group"><label for="report-year" class="form-label">Año</label><input type="number" class="form-control" id="report-year" min="2020" max="2100"></div><div class="col-md-3"><button type="submit" class="btn btn-primary w-100">Generar</button></div></form><hr><div id="report-results" class="mt-4"></div></div></div></template>
+
+    <!-- Modales -->
+    <div class="modal fade" id="clientModal" tabindex="-1" aria-labelledby="clientModalLabel" aria-hidden="true"><div class="modal-dialog"><div class="modal-content"><div class="modal-header"><h5 class="modal-title" id="clientModalLabel">Datos del Cliente</h5><button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button></div><div class="modal-body"><form id="client-form" class="needs-validation" novalidate><input type="hidden" id="client-id"><div class="mb-3"><label for="client-name" class="form-label">Nombre Completo</label><input type="text" class="form-control" id="client-name" required><div class="invalid-feedback">El nombre es requerido.</div></div><div class="mb-3"><label for="client-email" class="form-label">Email</label><input type="email" class="form-control" id="client-email" required><div class="invalid-feedback">El formato del email es inválido.</div></div><div class="mb-3"><label for="client-phone" class="form-label">Teléfono</label><input type="tel" class="form-control" id="client-phone" pattern="[0-9]{8,15}" required><div class="invalid-feedback">Debe contener entre 8 y 15 dígitos.</div></div></form></div><div class="modal-footer"><button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Cancelar</button><button type="button" class="btn btn-primary" id="save-client-btn">Guardar Cambios</button></div></div></div></div>
+    <div class="modal fade" id="historyModal" tabindex="-1" aria-labelledby="historyModalLabel" aria-hidden="true"><div class="modal-dialog modal-lg"><div class="modal-content"><div class="modal-header"><h5 class="modal-title" id="historyModalLabel">Historial Clínico</h5><button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button></div><div class="modal-body"><div id="history-summary-section" class="mb-3"><h6 class="mb-2"><i class="bi bi-card-text"></i> Resumen del Historial (IA)</h6><div id="history-summary-content" class="p-2 border rounded" style="min-height: 50px;"><p class="text-muted m-0">Haga clic en el botón para generar un resumen.</p></div><button class="btn btn-sm btn-outline-primary mt-2" data-action="generate-history-summary">✨ Generar Resumen</button></div><hr><h6><i class="bi bi-journal-text"></i> Entradas Existentes</h6><div id="history-entries" class="mb-3" style="max-height: 200px; overflow-y: auto;"></div><hr><div id="add-history-section"><h6><i class="bi bi-journal-plus"></i> Añadir Nueva Entrada</h6><form id="history-form" class="needs-validation" novalidate><input type="hidden" id="history-client-id"><div class="row"><div class="col-md-4 mb-3"><label for="history-date" class="form-label">Fecha</label><input type="date" class="form-control" id="history-date" required><div class="invalid-feedback">La fecha es requerida.</div></div><div class="col-md-4 mb-3"><label for="history-myopia" class="form-label">Miopía</label><input type="text" class="form-control" id="history-myopia" placeholder="-1.25"></div><div class="col-md-4 mb-3"><label for="history-astigmatism" class="form-label">Astigmatismo</label><input type="text" class="form-control" id="history-astigmatism" placeholder="-0.75"></div></div><div class="mb-3"><label for="history-others" class="form-label">Observaciones</label><textarea class="form-control" id="history-others" rows="2"></textarea></div><button type="submit" class="btn btn-success"><i class="bi bi-plus-circle"></i> Añadir Entrada</button></form></div></div><div class="modal-footer"><button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Cerrar</button></div></div></div></div>
+    <div class="modal fade" id="appointmentModal" tabindex="-1" aria-labelledby="appointmentModalLabel" aria-hidden="true"><div class="modal-dialog"><div class="modal-content"><div class="modal-header"><h5 class="modal-title" id="appointmentModalLabel">Gestionar Cita</h5><button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button></div><div class="modal-body"><form id="appointment-form" class="needs-validation" novalidate><input type="hidden" id="appointment-id"><input type="hidden" id="appointment-client-id"><div class="mb-3 position-relative"><label for="appointment-client-search" class="form-label">Buscar Cliente</label><input type="text" class="form-control" id="appointment-client-search" placeholder="Escriba nombre, email o teléfono..." autocomplete="off" required><div class="invalid-feedback">Debe seleccionar un cliente de la lista.</div><div id="client-search-results" class="list-group mt-1 hidden"></div></div><div class="row"><div class="col-md-6 mb-3"><label for="appointment-date" class="form-label">Fecha</label><input type="date" class="form-control" id="appointment-date" required><div class="invalid-feedback">Fecha requerida.</div></div><div class="col-md-6 mb-3"><label for="appointment-time" class="form-label">Hora</label><input type="time" class="form-control" id="appointment-time" required><div class="invalid-feedback">Hora requerida.</div></div></div><div class="mb-3"><label for="appointment-description" class="form-label">Descripción</label><textarea class="form-control" id="appointment-description" required></textarea><div class="invalid-feedback">Descripción requerida.</div></div><div class="mb-3"><label for="appointment-status" class="form-label">Estado</label><select class="form-select" id="appointment-status" required><option value="pending">Pendiente</option><option value="confirmed">Confirmada</option><option value="cancelled">Cancelada</option><option value="absent">Ausente</option></select></div><hr><div class="p-3 border rounded"><p class="mb-2"><strong>Recordatorios Automáticos</strong></p><div class="mb-3"><label for="reminder-method" class="form-label">Método de Contacto</label><select class="form-select" id="reminder-method"><option value="email">Email</option><option value="sms">SMS</option><option value="both">Ambos</option></select></div><div class="mb-2"><label for="reminder-content" class="form-label">Mensaje Personalizado (Opcional)</label><textarea class="form-control" id="reminder-content" rows="3" placeholder="Dejar en blanco para usar el mensaje estándar."></textarea></div><button type="button" class="btn btn-sm btn-outline-primary" data-action="generate-reminder-message">✨ Sugerir Mensaje con IA</button></div></form></div><div class="modal-footer"><button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Cancelar</button><button type="button" class="btn btn-primary" id="save-appointment-btn">Guardar Cita</button></div></div></div></div>
+    <div class="modal fade" id="notificationHistoryModal" tabindex="-1" aria-labelledby="notificationHistoryModalLabel" aria-hidden="true"><div class="modal-dialog modal-lg"><div class="modal-content"><div class="modal-header"><h5 class="modal-title" id="notificationHistoryModalLabel">Historial de Recordatorios</h5><button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button></div><div class="modal-body"><div id="notification-history-content"></div></div><div class="modal-footer"><button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Cerrar</button></div></div></div></div>
+    <div class="modal fade" id="manageUsersModal" tabindex="-1" aria-labelledby="manageUsersModalLabel" aria-hidden="true"><div class="modal-dialog modal-lg"><div class="modal-content"><div class="modal-header"><h5 class="modal-title" id="manageUsersModalLabel">Gestionar Usuarios</h5><button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button></div><div class="modal-body"><div id="manage-users-content"></div><hr><h6><i class="bi bi-person-plus-fill"></i> Crear Nuevo Usuario</h6><form id="new-user-form" class="row g-3 needs-validation" novalidate><div class="col-md-4"><label for="new-username" class="form-label">Usuario</label><input type="text" class="form-control" id="new-username" required></div><div class="col-md-4"><label for="new-password" class="form-label">Contraseña</label><input type="password" class="form-control" id="new-password" required></div><div class="col-md-4"><label for="new-role" class="form-label">Rol</label><select id="new-role" class="form-select" required><option value="recepcion">Recepción</option><option value="optometrista">Optometrista</option><option value="admin">Admin</option></select></div><div class="col-12"><button type="submit" class="btn btn-success">Crear Usuario</button></div></form></div><div class="modal-footer"><button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Cerrar</button></div></div></div></div>
+    
+    <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/js/bootstrap.bundle.min.js"></script>
+    <script>
+    (function() {
+        'use strict';
+
+        // ========================================================================
+        // ESTADO DE LA APLICACIÓN Y DATOS INICIALES
+        // ========================================================================
+        let state = {
+            currentUser: null,
+            currentScreen: 'login',
+            data: {
+                users: [
+                    { username: 'admin', password: 'admin123', role: 'admin' },
+                    { username: 'recepcion', password: 'recep123', role: 'recepcion' },
+                    { username: 'optometrista', password: 'opto123', role: 'optometrista' }
+                ],
+                clients: [
+                    { id: 1, name: 'Juan Pérez García', email: 'juan.perez@example.com', phone: '5512345678', registrationDate: '2024-01-15' },
+                    { id: 2, name: 'María López Martínez', email: 'maria.lopez@example.com', phone: '5587654321', registrationDate: '2024-02-20' },
+                    { id: 3, name: 'Carlos Sánchez Rodríguez', email: 'carlos.sanchez@example.com', phone: '5511223344', registrationDate: '2024-03-10' }
+                ],
+                appointments: [
+                    { id: 1, clientId: 1, date: getToday(), time: '10:00', description: 'Examen de la vista', status: 'pending' },
+                    { id: 2, clientId: 2, date: getToday(), time: '11:00', description: 'Revisión de lentes', status: 'confirmed' },
+                    { id: 3, clientId: 3, date: '2024-05-20', time: '12:00', description: 'Consulta general', status: 'absent' }
+                ],
+                histories: { 
+                    1: [{date: '2023-01-10', myopia: '-1.75', astigmatism: '-0.50', others: 'Presión ocular normal.'},{date: '2024-01-15', myopia: '-2.00', astigmatism: '-0.50', others: 'Ligero aumento de miopía.'}],
+                    2: [{date: '2024-02-20', myopia: '-1.50', astigmatism: '0.00', others: ''}]
+                },
+                notifications: []
+            },
+            chartInstance: null,
+            modals: {}
+        };
+
+        // ========================================================================
+        // FUNCIONES DE UTILIDAD Y API
+        // ========================================================================
+        function getToday() { return new Date().toISOString().split('T')[0]; }
+
+        function showToast(message, type = 'success') {
+            const toastContainer = document.querySelector('.toast-container');
+            const toastId = 'toast-' + Date.now();
+            const bgClass = { success: 'bg-success', error: 'bg-danger', warning: 'bg-warning', info: 'bg-info' }[type];
+            const icon = { success: '<i class="bi bi-check-circle-fill"></i>', error: '<i class="bi bi-x-circle-fill"></i>', warning: '<i class="bi bi-exclamation-triangle-fill"></i>', info: '<i class="bi bi-info-circle-fill"></i>' }[type];
+            const toastHTML = `<div id="${toastId}" class="toast align-items-center text-white ${bgClass} border-0" role="alert" aria-live="assertive" aria-atomic="true"><div class="d-flex"><div class="toast-body">${icon} ${message}</div><button type="button" class="btn-close btn-close-white me-2 m-auto" data-bs-dismiss="toast" aria-label="Close"></button></div></div>`;
+            toastContainer.insertAdjacentHTML('beforeend', toastHTML);
+            const toastElement = document.getElementById(toastId);
+            const toast = new bootstrap.Toast(toastElement, { delay: 4000 });
+            toast.show();
+            toastElement.addEventListener('hidden.bs.toast', () => toastElement.remove());
+        }
+
+        function debugLog(message) {
+            const logContainer = document.getElementById('debug-log');
+            if (!logContainer) return;
+            const timestamp = new Date().toLocaleTimeString();
+            logContainer.innerHTML += `<p class="mb-1"><span class="text-success">${timestamp}:</span> ${message}</p>`;
+            logContainer.scrollTop = logContainer.scrollHeight;
+        }
+
+        function toggleLoadingSpinner(show) { document.getElementById('loading-spinner').classList.toggle('hidden', !show); }
+
+        async function callGeminiAPI(prompt) {
+            if (window.location.protocol === 'file:') {
+                showToast('Las funciones de IA no están disponibles en modo local (file://). Por favor, use un servidor web.', 'error');
+                return null;
+            }
+            toggleLoadingSpinner(true);
+            debugLog(`Enviando prompt a Gemini API...`);
+            const apiKey = ""; 
+            const apiUrl = `https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash-preview-05-20:generateContent?key=${apiKey}`;
+            try {
+                const response = await fetch(apiUrl, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ contents: [{ parts: [{ text: prompt }] }] }) });
+                if (!response.ok) { const errorBody = await response.json(); throw new Error(`API Error: ${response.status} ${response.statusText} - ${errorBody.error.message}`); }
+                const result = await response.json();
+                const text = result.candidates?.[0]?.content?.parts?.[0]?.text;
+                if (text) { debugLog("Respuesta recibida de Gemini API."); return text; } 
+                else { throw new Error("Respuesta inválida de la API."); }
+            } catch (error) {
+                console.error("Error llamando a Gemini API:", error);
+                showToast("Error al contactar el servicio de IA.", "error");
+                debugLog(`Error en API: ${error.message}`);
+                return null;
+            } finally {
+                toggleLoadingSpinner(false);
+            }
+        }
+        
+        function saveData() { try { localStorage.setItem('miramasOpticaData', JSON.stringify(state.data)); debugLog('Datos guardados.'); } catch (e) { showToast('No se pudo guardar.', 'error'); } }
+        function loadData() { try { const d = localStorage.getItem('miramasOpticaData'); if (d) { state.data = JSON.parse(d); debugLog('Datos cargados.'); } else { debugLog('Usando datos de ejemplo.'); saveData(); } } catch (e) { showToast('No se pudieron cargar los datos.', 'error'); } }
+
+        function showScreen(screenName) {
+            state.currentScreen = screenName;
+            const appContainer = document.getElementById('app-container');
+            const template = document.getElementById(`${screenName}-template`);
+            if (!template) { appContainer.innerHTML `<div class="alert alert-danger">Error: Pantalla no encontrada.</div>`; return; }
+            appContainer.innerHTML = template.innerHTML;
+            updateActiveNavLink();
+            const renderFunction = window[`render${screenName.charAt(0).toUpperCase() + screenName.slice(1)}Screen`];
+            if (typeof renderFunction === 'function') { renderFunction(); }
+        }
+        
+        function updateNavbarForRole() {
+            const userRole = state.currentUser.role;
+            document.querySelectorAll('[data-role]').forEach(item => {
+                const requiredRoles = item.dataset.role.split(',');
+                item.classList.toggle('hidden', !requiredRoles.includes(userRole));
+            });
+        }
+
+        function updateActiveNavLink() {
+            document.querySelectorAll('#main-nav-links .nav-link').forEach(link => {
+                link.classList.toggle('active', link.dataset.screen === state.currentScreen);
+            });
+        }
+
+        // ========================================================================
+        // RENDERIZADO DE PANTALLAS
+        // ========================================================================
+        window.renderDashboardScreen = function() {
+            const user = state.currentUser;
+            document.getElementById('welcome-msg').textContent = `Bienvenido, ${user.username} (Rol: ${user.role})`;
+            const cardsContainer = document.getElementById('dashboard-cards');
+            let cardsHTML = '';
+            const totalClients = state.data.clients.length;
+            const todayAppointments = state.data.appointments.filter(a => a.date === getToday()).length;
+            if (user.role === 'admin') { cardsHTML = `<div class="col-md-4"><div class="card text-center p-3"><h5>${totalClients}</h5><p>Clientes Totales</p></div></div><div class="col-md-4"><div class="card text-center p-3"><h5>${todayAppointments}</h5><p>Citas para Hoy</p></div></div><div class="col-md-4"><div class="card text-center p-3"><h5>${state.data.appointments.length}</h5><p>Citas Totales</p></div></div>`; }
+            else if (user.role === 'recepcion') { cardsHTML = `<div class="col-md-6"><div class="card text-center p-3"><h5>${todayAppointments}</h5><p>Citas para Hoy</p></div></div><div class="col-md-6"><div class="card text-center p-3"><h5>${state.data.notifications.filter(n => n.status === 'pending').length}</h5><p>Recordatorios Pendientes</p></div></div>`; }
+            else if (user.role === 'optometrista') { cardsHTML = `<div class="col-md-6"><div class="card text-center p-3"><h5>${totalClients}</h5><p>Clientes Registrados</p></div></div><div class="col-md-6"><div class="card text-center p-3"><h5>${Object.keys(state.data.histories).length}</h5><p>Historiales Clínicos</p></div></div>`; }
+            cardsContainer.innerHTML = cardsHTML;
+        }
+        
+        window.renderClientsScreen = function() {
+            document.getElementById('client-search').addEventListener('input', renderClientsTable);
+            renderClientsTable();
+        }
+
+        function renderClientsTable() {
+            const searchValue = document.getElementById('client-search').value.toLowerCase();
+            const tbody = document.getElementById('clients-table');
+            const emptyDiv = document.getElementById('clients-empty');
+            tbody.innerHTML = '';
+            const filteredClients = state.data.clients.filter(c => c.name.toLowerCase().includes(searchValue) || String(c.id).includes(searchValue) || c.phone.includes(searchValue) || c.email.toLowerCase().includes(searchValue));
+            emptyDiv.classList.toggle('hidden', filteredClients.length > 0);
+            filteredClients.forEach(client => {
+                const hasMissed = state.data.appointments.some(a => a.clientId === client.id && a.status === 'absent');
+                const statusBadge = hasMissed ? '<span class="badge bg-danger">Ausente</span>' : '<span class="badge bg-success">Al día</span>';
+                const canViewHistory = ['admin', 'optometrista'].includes(state.currentUser.role);
+                const historyButton = canViewHistory ? `<button class="btn btn-sm btn-info" title="Ver Historial" data-client-id="${client.id}" data-action="view-history"><i class="bi bi-journal-medical"></i></button>` : '';
+                const tr = document.createElement('tr');
+                tr.innerHTML = `<td>${client.id}</td><td>${client.name}</td><td>${client.email}</td><td>${client.phone}</td><td>${client.registrationDate}</td><td>${statusBadge}</td><td><div class="btn-group" role="group">${historyButton}<button class="btn btn-sm btn-warning" title="Editar" data-client-id="${client.id}" data-action="edit-client"><i class="bi bi-pencil-square"></i></button><button class="btn btn-sm btn-danger" title="Eliminar" data-client-id="${client.id}" data-action="delete-client"><i class="bi bi-trash"></i></button></div></td>`;
+                tbody.appendChild(tr);
+            });
+        }
+        
+        function prepareClientForm(mode, clientId = null) {
+            const form = document.getElementById('client-form');
+            form.reset();
+            form.classList.remove('was-validated');
+            document.getElementById('clientModalLabel').textContent = mode === 'create' ? 'Nuevo Cliente' : 'Editar Cliente';
+            document.getElementById('client-id').value = clientId || '';
+            if (mode === 'edit' && clientId) {
+                const client = state.data.clients.find(c => c.id === clientId);
+                if (client) {
+                    document.getElementById('client-name').value = client.name;
+                    document.getElementById('client-email').value = client.email;
+                    document.getElementById('client-phone').value = client.phone;
+                }
+            }
+            state.modals.clientModal.show();
+        }
+
+        function saveClient() {
+            const form = document.getElementById('client-form');
+            if (!form.checkValidity()) { form.classList.add('was-validated'); return; }
+            const id = parseInt(document.getElementById('client-id').value) || Date.now();
+            const clientData = { id, name: document.getElementById('client-name').value, email: document.getElementById('client-email').value, phone: document.getElementById('client-phone').value, registrationDate: getToday() };
+            const index = state.data.clients.findIndex(c => c.id === id);
+            if (index > -1) { clientData.registrationDate = state.data.clients[index].registrationDate; state.data.clients[index] = clientData; showToast('Cliente actualizado.'); } 
+            else { state.data.clients.push(clientData); showToast('Cliente creado.'); }
+            saveData();
+            renderClientsTable();
+            state.modals.clientModal.hide();
+        }
+        
+        function deleteClient(clientId) {
+            if (confirm('¿Eliminar este cliente? Se borrará también su historial y citas.')) {
+                state.data.clients = state.data.clients.filter(c => c.id !== clientId);
+                delete state.data.histories[clientId];
+                state.data.appointments = state.data.appointments.filter(a => a.clientId !== clientId);
+                saveData();
+                showToast('Cliente eliminado.', 'warning');
+                renderClientsTable();
+            }
+        }
+        
+        function prepareHistoryModal(clientId) {
+            const client = state.data.clients.find(c => c.id === clientId);
+            document.getElementById('historyModalLabel').textContent = `Historial Clínico de: ${client.name}`;
+            document.getElementById('history-client-id').value = clientId;
+            document.querySelector('#historyModal [data-action="generate-history-summary"]').dataset.clientId = clientId;
+            document.getElementById('history-summary-content').innerHTML = '<p class="text-muted m-0">Haga clic en el botón para generar un resumen.</p>';
+            const entriesContainer = document.getElementById('history-entries');
+            entriesContainer.innerHTML = '';
+            const clientHistory = state.data.histories[clientId] || [];
+            const summarySection = document.getElementById('history-summary-section');
+            summarySection.classList.toggle('hidden', clientHistory.length === 0);
+            if (clientHistory.length > 0) {
+                clientHistory.forEach(entry => { entriesContainer.innerHTML += `<div class="card mb-2"><div class="card-body p-2"><strong>Fecha: ${entry.date}</strong><br>Miopía: ${entry.myopia || 'N/A'} | Astigmatismo: ${entry.astigmatism || 'N/A'}<br><small>Observaciones: ${entry.others || 'Ninguna'}</small></div></div>`; });
+            } else {
+                entriesContainer.innerHTML = '<p class="text-muted">No hay entradas en el historial.</p>';
+            }
+            state.modals.historyModal.show();
+        }
+
+        async function generateHistorySummary(clientId) {
+            const clientHistory = state.data.histories[clientId];
+            if (!clientHistory || clientHistory.length === 0) { showToast("No hay historial para resumir.", "info"); return; }
+            const historyText = clientHistory.map(e => `Fecha: ${e.date}, Miopía: ${e.myopia||'N/A'}, Astigmatismo: ${e.astigmatism||'N/A'}, Notas: ${e.others||'N/A'}`).join('\n');
+            const prompt = `Resume el siguiente historial clínico de un paciente de oftalmología en un párrafo conciso y fácil de entender. Destaca cualquier tendencia importante:\n\n${historyText}`;
+            const summary = await callGeminiAPI(prompt);
+            if (summary) { document.getElementById('history-summary-content').textContent = summary; }
+        }
+
+        function addHistoryEntry(event) {
+            event.preventDefault();
+            const form = document.getElementById('history-form');
+            if (!form.checkValidity()) { form.classList.add('was-validated'); return; }
+            const clientId = parseInt(document.getElementById('history-client-id').value);
+            const newEntry = { date: document.getElementById('history-date').value, myopia: document.getElementById('history-myopia').value, astigmatism: document.getElementById('history-astigmatism').value, others: document.getElementById('history-others').value };
+            if (!state.data.histories[clientId]) { state.data.histories[clientId] = []; }
+            state.data.histories[clientId].push(newEntry);
+            saveData();
+            showToast('Nueva entrada de historial añadida.');
+            form.reset();
+            form.classList.remove('was-validated');
+            prepareHistoryModal(clientId);
+        }
+
+        window.renderCitasScreen = function() {
+            const dateInput = document.getElementById('agenda-date');
+            dateInput.value = getToday();
+            dateInput.addEventListener('change', renderAgenda);
+            renderAgenda();
+        }
+
+        function renderAgenda() {
+            const date = document.getElementById('agenda-date').value || getToday();
+            const tbody = document.getElementById('agenda-table');
+            const emptyDiv = document.getElementById('citas-empty');
+            tbody.innerHTML = '';
+            const filtered = state.data.appointments.filter(a => a.date === date).sort((a,b) => a.time.localeCompare(b.time));
+            emptyDiv.classList.toggle('hidden', filtered.length > 0);
+            filtered.forEach(a => {
+                const client = state.data.clients.find(c => c.id === a.clientId) || {name: 'Desconocido'};
+                const tr = document.createElement('tr');
+                tr.className = a.status;
+                tr.innerHTML = `<td>${a.time}</td><td>${client.name}</td><td>${a.description}</td><td>${a.status}</td><td><div class="btn-group"><button class="btn btn-sm btn-secondary" title="Ver Recordatorios" data-appointment-id="${a.id}" data-action="view-notifications"><i class="bi bi-bell-fill"></i></button><button class="btn btn-sm btn-warning" title="Editar Cita" data-appointment-id="${a.id}" data-action="edit-appointment"><i class="bi bi-pencil-square"></i></button><button class="btn btn-sm btn-danger" title="Eliminar Cita" data-appointment-id="${a.id}" data-action="delete-appointment"><i class="bi bi-trash"></i></button></div></td>`;
+                tbody.appendChild(tr);
+            });
+        }
+
+        function prepareAppointmentForm(mode, appointmentId = null) {
+            const form = document.getElementById('appointment-form');
+            form.reset();
+            form.classList.remove('was-validated');
+            document.getElementById('appointmentModalLabel').textContent = mode === 'create' ? 'Nueva Cita' : 'Editar Cita';
+            document.getElementById('appointment-id').value = appointmentId || '';
+            document.getElementById('appointment-client-id').value = '';
+            const searchInput = document.getElementById('appointment-client-search');
+            const searchResults = document.getElementById('client-search-results');
+            searchInput.value = '';
+            searchResults.innerHTML = '';
+            searchResults.classList.add('hidden');
+            
+            if (mode === 'edit' && appointmentId) {
+                const a = state.data.appointments.find(app => app.id === appointmentId);
+                if (a) {
+                    const client = state.data.clients.find(c => c.id === a.clientId);
+                    document.getElementById('appointment-client-id').value = a.clientId;
+                    searchInput.value = client ? `${client.name} (${client.phone})` : 'Cliente no encontrado';
+                    searchInput.readOnly = true; // No se puede cambiar el cliente al editar
+                    document.getElementById('appointment-date').value = a.date;
+                    document.getElementById('appointment-time').value = a.time;
+                    document.getElementById('appointment-description').value = a.description;
+                    document.getElementById('appointment-status').value = a.status;
+                }
+            } else {
+                 searchInput.readOnly = false;
+            }
+            state.modals.appointmentModal.show();
+        }
+        
+        function saveAppointment() {
+            const form = document.getElementById('appointment-form');
+            const clientId = document.getElementById('appointment-client-id').value;
+            if (!clientId) {
+                document.getElementById('appointment-client-search').classList.add('is-invalid');
+                showToast('Debe buscar y seleccionar un cliente válido.', 'error');
+                return;
+            }
+            if (!form.checkValidity()) { form.classList.add('was-validated'); return; }
+
+            const id = parseInt(document.getElementById('appointment-id').value) || Date.now();
+            const apptData = { id, clientId: parseInt(clientId), date: document.getElementById('appointment-date').value, time: document.getElementById('appointment-time').value, description: document.getElementById('appointment-description').value, status: document.getElementById('appointment-status').value };
+            const conflict = state.data.appointments.some(a => a.id !== id && a.date === apptData.date && a.time === apptData.time);
+            if (conflict) { showToast('Ya existe una cita en esa fecha y hora.', 'error'); return; }
+            
+            const index = state.data.appointments.findIndex(a => a.id === id);
+            if (index > -1) { 
+                state.data.appointments[index] = apptData; 
+                showToast('Cita actualizada.');
+            } else { 
+                state.data.appointments.push(apptData); 
+                showToast('Cita creada.');
+                scheduleAutomaticReminders(apptData); // Solo programar recordatorios para citas nuevas
+            }
+            
+            saveData();
+            if(state.currentScreen === 'citas') renderAgenda();
+            state.modals.appointmentModal.hide();
+        }
+
+        function scheduleAutomaticReminders(appointment) {
+            const client = state.data.clients.find(c => c.id === appointment.clientId);
+            if (!client) return;
+            const today = new Date();
+            today.setHours(0,0,0,0);
+            const apptDate = new Date(`${appointment.date}T00:00:00`);
+            const diffDays = Math.ceil((apptDate - today) / (1000 * 60 * 60 * 24));
+            
+            let reminderDates = [];
+            if (diffDays <= 0) return; // No programar recordatorios para hoy o el pasado
+
+            if (diffDays > 30) {
+                let r = new Date(apptDate); r.setDate(r.getDate() - 30); reminderDates.push(r);
+                r = new Date(apptDate); r.setDate(r.getDate() - 15); reminderDates.push(r);
+            }
+            if (diffDays > 7) { let r = new Date(apptDate); r.setDate(r.getDate() - 7); reminderDates.push(r); }
+            if (diffDays > 1) { let r = new Date(apptDate); r.setDate(r.getDate() - 2); reminderDates.push(r); }
+            let r = new Date(apptDate); r.setDate(r.getDate() - 1); reminderDates.push(r);
+
+            const uniqueDates = [...new Set(reminderDates.map(d => d.toISOString().split('T')[0]))];
+            
+            let count = 0;
+            uniqueDates.forEach(dateStr => {
+                if (new Date(dateStr) < today) return;
+                const content = document.getElementById('reminder-content').value || `Recordatorio de su cita en MIRAMAS el ${appointment.date} a las ${appointment.time}.`;
+                const notification = {
+                    id: Date.now() + Math.random(),
+                    appointmentId: appointment.id,
+                    timestamp: new Date().toISOString(),
+                    sendDate: dateStr,
+                    sendTime: '09:00',
+                    recipient: `${client.name} (${client.email})`,
+                    method: document.getElementById('reminder-method').value,
+                    content,
+                    status: 'pending'
+                };
+                state.data.notifications.push(notification);
+                count++;
+            });
+            if (count > 0) {
+                showToast(`${count} recordatorio(s) automático(s) programado(s).`, 'info');
+            }
+        }
+
+        function deleteAppointment(appointmentId) {
+            if (confirm('¿Eliminar esta cita?')) {
+                state.data.appointments = state.data.appointments.filter(a => a.id !== appointmentId);
+                // Opcional: eliminar también notificaciones asociadas
+                state.data.notifications = state.data.notifications.filter(n => n.appointmentId !== appointmentId);
+                saveData();
+                showToast('Cita eliminada.', 'warning');
+                renderAgenda();
+            }
+        }
+        
+        async function generateReminderMessage() {
+            const clientId = document.getElementById('appointment-client-id').value;
+            if (!clientId) { showToast('Seleccione un cliente primero.', 'warning'); return; }
+            const client = state.data.clients.find(c => c.id === parseInt(clientId));
+            const apptDate = document.getElementById('appointment-date').value;
+            const apptTime = document.getElementById('appointment-time').value;
+            if (!client || !apptDate || !apptTime) { showToast('Complete los datos del cliente, fecha y hora.', 'warning'); return; }
+            const prompt = `Escribe un recordatorio de cita amigable y profesional para un paciente llamado "${client.name}". La cita es el ${apptDate} a las ${apptTime}. El mensaje debe ser breve, ideal para SMS o email. Incluye el nombre de la óptica "MIRAMAS".`;
+            const message = await callGeminiAPI(prompt);
+            if (message) { document.getElementById('reminder-content').value = message.replace(/"/g, ''); }
+        }
+
+        function prepareNotificationHistoryModal(appointmentId) {
+            const appointment = state.data.appointments.find(a => a.id === appointmentId);
+            const client = state.data.clients.find(c => c.id === appointment.clientId);
+            document.getElementById('notificationHistoryModalLabel').textContent = `Recordatorios para la cita de ${client.name}`;
+            const contentDiv = document.getElementById('notification-history-content');
+            const notifications = state.data.notifications.filter(n => n.appointmentId === appointmentId).sort((a,b) => new Date(a.sendDate) - new Date(b.sendDate));
+
+            if (notifications.length === 0) {
+                contentDiv.innerHTML = '<div class="alert alert-info">No hay recordatorios programados para esta cita.</div>';
+            } else {
+                let tableHTML = `<table class="table table-sm table-striped"><thead><tr><th>Fecha Programada</th><th>Estado</th><th>Método</th></tr></thead><tbody>`;
+                notifications.forEach(n => {
+                    tableHTML += `<tr><td>${n.sendDate}</td><td>${n.status}</td><td>${n.method}</td></tr>`;
+                });
+                tableHTML += '</tbody></table>';
+                contentDiv.innerHTML = tableHTML;
+            }
+            state.modals.notificationHistoryModal.show();
+        }
+
+        window.renderReportesScreen = function() {
+            const form = document.getElementById('report-form');
+            form.addEventListener('submit', (e) => { e.preventDefault(); generateReport(); });
+            document.getElementById('report-type').addEventListener('change', updateReportInputs);
+            updateReportInputs();
+        }
+        
+        function updateReportInputs() {
+            const type = document.getElementById('report-type').value;
+            document.getElementById('report-date-group').classList.toggle('hidden', type !== 'daily');
+            document.getElementById('report-month-group').classList.toggle('hidden', type !== 'monthly');
+            document.getElementById('report-year-group').classList.toggle('hidden', type !== 'annual');
+        }
+
+        function generateReport() {
+            const type = document.getElementById('report-type').value;
+            let start, end;
+            if (type === 'daily') { const date = document.getElementById('report-date').value || getToday(); start = end = date; }
+            else if (type === 'monthly') { const month = document.getElementById('report-month').value; if (!month) { showToast('Debe seleccionar un mes.', 'warning'); return; } const [year, m] = month.split('-'); start = `${year}-${m}-01`; end = new Date(year, m, 0).toISOString().split('T')[0]; }
+            else if (type === 'annual') { const year = document.getElementById('report-year').value; if (!year) { showToast('Debe seleccionar un año.', 'warning'); return; } start = `${year}-01-01`; end = `${year}-12-31`; }
+            
+            const appts = state.data.appointments.filter(a => a.date >= start && a.date <= end);
+            const newClients = state.data.clients.filter(c => c.registrationDate >= start && c.registrationDate <= end);
+            const reportData = { appts, newClients, start, end, type };
+            
+            const resultsDiv = document.getElementById('report-results');
+            resultsDiv.innerHTML = `<h4>Reporte para el período de ${start} a ${end}</h4><div class="row g-3"><div class="col-md-3"><div class="card p-2 text-center"><h5>${appts.length}</h5><p>Citas Totales</p></div></div><div class="col-md-3"><div class="card p-2 text-center"><h5>${appts.filter(a=>a.status==='confirmed').length}</h5><p>Confirmadas</p></div></div><div class="col-md-3"><div class="card p-2 text-center"><h5>${appts.filter(a=>a.status==='absent').length}</h5><p>Ausencias</p></div></div><div class="col-md-3"><div class="card p-2 text-center"><h5>${newClients.length}</h5><p>Nuevos Clientes</p></div></div></div><button id="export-csv-btn" class="btn btn-secondary mt-3"><i class="bi bi-download"></i> Exportar CSV</button><div class="mt-4" id="chart-container" style="display: ${state.currentUser.role === 'admin' ? 'block' : 'none'}"><canvas id="reportChart"></canvas></div>`;
+            document.getElementById('export-csv-btn').onclick = () => exportReportCSV(reportData);
+            if (state.currentUser.role === 'admin') { renderChart(reportData); }
+        }
+
+        function renderChart({appts, type}) {
+            const ctx = document.getElementById('reportChart').getContext('2d');
+            if (state.chartInstance) state.chartInstance.destroy();
+            const labels = [], counts = [];
+            const statuses = ['pending', 'confirmed', 'cancelled', 'absent'];
+            labels.push(...statuses);
+            counts.push(...statuses.map(s => appts.filter(a => a.status === s).length));
+            state.chartInstance = new Chart(ctx, { type: 'bar', data: { labels, datasets: [{label: 'Citas por Estado', data: counts, backgroundColor: ['#ffc107', '#198754', '#dc3545', '#6c757d']}] }, options: { scales: { y: { beginAtZero: true } } } });
+        }
+
+        function exportReportCSV({appts, newClients, start, end}) {
+            let csv = 'Tipo,Valor\n';
+            csv += `Periodo,"${start} a ${end}"\n`;
+            csv += `Citas Totales,${appts.length}\n`;
+            csv += `Citas Confirmadas,${appts.filter(a=>a.status==='confirmed').length}\n`;
+            csv += `Ausencias,${appts.filter(a=>a.status==='absent').length}\n`;
+            csv += `Nuevos Clientes,${newClients.length}\n`;
+            const blob = new Blob([csv], {type: 'text/csv;charset=utf-8;'});
+            const url = URL.createObjectURL(blob);
+            const a = document.createElement('a'); a.href = url;
+            a.download = `reporte_miramas_${start}_${end}.csv`; a.click();
+            URL.revokeObjectURL(url);
+        }
+
+        // ========================================================================
+        // GESTIÓN DE USUARIOS (ADMIN)
+        // ========================================================================
+        function prepareManageUsersModal() {
+            const contentDiv = document.getElementById('manage-users-content');
+            let tableHTML = `<div class="table-responsive"><table class="table table-striped"><thead><tr><th>Usuario</th><th>Rol</th><th class="text-end">Acciones</th></tr></thead><tbody>`;
+            state.data.users.forEach(user => {
+                const isCurrentUser = user.username === state.currentUser.username;
+                tableHTML += `
+                    <tr>
+                        <td>${user.username}</td>
+                        <td>
+                            <select class="form-select form-select-sm" data-username="${user.username}" data-action="change-user-role" ${isCurrentUser ? 'disabled' : ''}>
+                                <option value="recepcion" ${user.role === 'recepcion' ? 'selected' : ''}>Recepción</option>
+                                <option value="optometrista" ${user.role === 'optometrista' ? 'selected' : ''}>Optometrista</option>
+                                <option value="admin" ${user.role === 'admin' ? 'selected' : ''}>Admin</option>
+                            </select>
+                        </td>
+                        <td class="text-end">
+                            <button class="btn btn-danger btn-sm" data-username="${user.username}" data-action="delete-user" ${isCurrentUser ? 'disabled' : ''}><i class="bi bi-trash"></i></button>
+                        </td>
+                    </tr>
+                `;
+            });
+            tableHTML += `</tbody></table></div>`;
+            contentDiv.innerHTML = tableHTML;
+            state.modals.manageUsersModal.show();
+        }
+        
+        function changeUserRole(username, newRole) {
+            const user = state.data.users.find(u => u.username === username);
+            if (user) {
+                user.role = newRole;
+                saveData();
+                showToast(`Rol de ${username} actualizado a ${newRole}.`);
+                prepareManageUsersModal(); // Refresh
+            }
+        }
+
+        function deleteUser(username) {
+            if (confirm(`¿Seguro que quieres eliminar al usuario ${username}? Esta acción es irreversible.`)) {
+                state.data.users = state.data.users.filter(u => u.username !== username);
+                saveData();
+                showToast(`Usuario ${username} eliminado.`, 'warning');
+                prepareManageUsersModal(); // Refresh
+            }
+        }
+
+        function addNewUser(event) {
+            event.preventDefault();
+            const form = event.target;
+            if (!form.checkValidity()) { form.classList.add('was-validated'); return; }
+            const username = document.getElementById('new-username').value;
+            const password = document.getElementById('new-password').value;
+            const role = document.getElementById('new-role').value;
+            
+            if (state.data.users.some(u => u.username === username)) {
+                showToast(`El nombre de usuario "${username}" ya existe.`, 'error');
+                return;
+            }
+
+            state.data.users.push({ username, password, role });
+            saveData();
+            showToast(`Nuevo usuario "${username}" creado con éxito.`);
+            form.reset();
+            form.classList.remove('was-validated');
+            prepareManageUsersModal(); // Refresh
+        }
+
+        // ========================================================================
+        // LÓGICA DE AUTENTICACIÓN Y EVENTOS
+        // ========================================================================
+        function handleLogin(event) {
+            event.preventDefault();
+            const form = event.target;
+            if (!form.checkValidity()) { form.classList.add('was-validated'); return; }
+            const username = document.getElementById('username').value;
+            const password = document.getElementById('password').value;
+            const user = state.data.users.find(u => u.username === username && u.password === password);
+            if (user) {
+                state.currentUser = user;
+                document.getElementById('login-screen').classList.add('hidden');
+                document.querySelector('nav').classList.remove('hidden');
+                updateNavbarForRole();
+                showScreen('dashboard');
+                debugLog(`Login exitoso como ${user.role}: ${user.username}`);
+            } else {
+                showToast('Credenciales inválidas', 'error');
+            }
+        }
+
+        function handleLogout() {
+            debugLog(`Logout del usuario ${state.currentUser.username}`);
+            state.currentUser = null;
+            document.getElementById('login-screen').classList.remove('hidden');
+            document.querySelector('nav').classList.add('hidden');
+            document.getElementById('app-container').innerHTML = '';
+        }
+
+        function setupTheme() {
+            const themeToggler = document.getElementById('theme-toggler');
+            const storedTheme = localStorage.getItem('miramasTheme') || 'light';
+            document.documentElement.setAttribute('data-bs-theme', storedTheme);
+            themeToggler.innerHTML = storedTheme === 'dark' ? '<i class="bi bi-sun-fill"></i>' : '<i class="bi bi-moon-stars-fill"></i>';
+
+            themeToggler.addEventListener('click', () => {
+                const currentTheme = document.documentElement.getAttribute('data-bs-theme');
+                const newTheme = currentTheme === 'dark' ? 'light' : 'dark';
+                document.documentElement.setAttribute('data-bs-theme', newTheme);
+                localStorage.setItem('miramasTheme', newTheme);
+                themeToggler.innerHTML = newTheme === 'dark' ? '<i class="bi bi-sun-fill"></i>' : '<i class="bi bi-moon-stars-fill"></i>';
+            });
+        }
+        
+        function setupEventListeners() {
+            document.getElementById('login-form').addEventListener('submit', handleLogin);
+            document.getElementById('logout-btn').addEventListener('click', handleLogout);
+            document.getElementById('toggle-debug-btn').addEventListener('click', () => { document.getElementById('debug-panel').classList.toggle('show'); });
+            
+            document.getElementById('main-nav-links').addEventListener('click', (e) => { if (e.target.matches('a[data-screen]')) { e.preventDefault(); showScreen(e.target.dataset.screen); } });
+            
+            document.body.addEventListener('click', (e) => {
+                const target = e.target.closest('[data-action]');
+                if (!target) return;
+                e.preventDefault();
+                const action = target.dataset.action;
+                if (action === 'create-client') prepareClientForm('create');
+                if (action === 'edit-client') prepareClientForm('edit', parseInt(target.dataset.clientId));
+                if (action === 'delete-client') deleteClient(parseInt(target.dataset.clientId));
+                if (action === 'view-history') prepareHistoryModal(parseInt(target.dataset.clientId));
+                if (action === 'generate-history-summary') generateHistorySummary(parseInt(target.dataset.clientId));
+                if (action === 'create-appointment') prepareAppointmentForm('create');
+                if (action === 'edit-appointment') prepareAppointmentForm('edit', parseInt(target.dataset.appointmentId));
+                if (action === 'delete-appointment') deleteAppointment(parseInt(target.dataset.appointmentId));
+                if (action === 'view-notifications') prepareNotificationHistoryModal(parseInt(target.dataset.appointmentId));
+                if (action === 'generate-reminder-message') generateReminderMessage();
+                if (action === 'manage-users') prepareManageUsersModal();
+                if (action === 'delete-user') deleteUser(target.dataset.username);
+            });
+            
+            document.body.addEventListener('change', e => {
+                const target = e.target.closest('[data-action="change-user-role"]');
+                if(target) {
+                    changeUserRole(target.dataset.username, target.value);
+                }
+            });
+
+            document.body.addEventListener('submit', e => { 
+                if (e.target.id === 'history-form') { addHistoryEntry(e); }
+                if (e.target.id === 'new-user-form') { addNewUser(e); }
+            });
+
+            document.getElementById('save-client-btn').addEventListener('click', saveClient);
+            document.getElementById('save-appointment-btn').addEventListener('click', saveAppointment);
+
+            document.body.addEventListener('input', e => {
+                if (e.target.id === 'appointment-client-search') {
+                    const searchTerm = e.target.value.toLowerCase();
+                    const resultsContainer = document.getElementById('client-search-results');
+                    resultsContainer.innerHTML = '';
+                    if (searchTerm.length < 2) { resultsContainer.classList.add('hidden'); return; }
+                    const filtered = state.data.clients.filter(c => c.name.toLowerCase().includes(searchTerm) || c.phone.includes(searchTerm) || c.email.toLowerCase().includes(searchTerm));
+                    if (filtered.length > 0) {
+                        filtered.slice(0, 5).forEach(c => { // Limitar a 5 resultados
+                            const item = document.createElement('a');
+                            item.href = '#';
+                            item.className = 'list-group-item list-group-item-action';
+                            item.textContent = `${c.name} - ${c.phone}`;
+                            item.onclick = (event) => {
+                                event.preventDefault();
+                                document.getElementById('appointment-client-search').value = `${c.name} (${c.phone})`;
+                                document.getElementById('appointment-client-id').value = c.id;
+                                document.getElementById('appointment-client-search').classList.remove('is-invalid');
+                                resultsContainer.classList.add('hidden');
+                            };
+                            resultsContainer.appendChild(item);
+                        });
+                        resultsContainer.classList.remove('hidden');
+                    } else { resultsContainer.classList.add('hidden'); }
+                }
+            });
+
+            const importFile = document.getElementById('import-file');
+            document.getElementById('import-json-btn').addEventListener('click', () => importFile.click());
+            importFile.addEventListener('change', (e) => {
+                const file = e.target.files[0]; if (!file) return;
+                const reader = new FileReader();
+                reader.onload = (event) => {
+                    try {
+                        const importedData = JSON.parse(event.target.result);
+                        if (importedData.users && importedData.clients) {
+                            state.data = importedData; saveData();
+                            showToast('Datos importados. La página se recargará.');
+                            setTimeout(() => location.reload(), 2000);
+                        } else { showToast('El archivo JSON no tiene el formato correcto.', 'error'); }
+                    } catch (err) { showToast('Error al procesar el archivo JSON.', 'error'); }
+                };
+                reader.readAsText(file); importFile.value = '';
+            });
+            document.getElementById('export-json-btn').addEventListener('click', () => {
+                const dataStr = JSON.stringify(state.data, null, 2);
+                const blob = new Blob([dataStr], {type: 'application/json'});
+                const url = URL.createObjectURL(blob);
+                const a = document.createElement('a'); a.href = url;
+                a.download = `miramas_backup_${getToday()}.json`; a.click();
+                URL.revokeObjectURL(url);
+                showToast('Datos exportados.');
+            });
+        }
+
+        function init() { 
+            loadData(); 
+            setupTheme();
+            state.modals.clientModal = new bootstrap.Modal(document.getElementById('clientModal'));
+            state.modals.historyModal = new bootstrap.Modal(document.getElementById('historyModal'));
+            state.modals.appointmentModal = new bootstrap.Modal(document.getElementById('appointmentModal'));
+            state.modals.notificationHistoryModal = new bootstrap.Modal(document.getElementById('notificationHistoryModal'));
+            state.modals.manageUsersModal = new bootstrap.Modal(document.getElementById('manageUsersModal'));
+            
+            setupEventListeners(); 
+            debugLog('Aplicación inicializada.'); 
+        }
+        document.addEventListener('DOMContentLoaded', init);
+
+    })();
+    </script>
+</body>
+</html>
